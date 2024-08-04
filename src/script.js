@@ -1,107 +1,140 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import TWEEN from "three/examples/jsm/libs/tween.module";
+import init from "./init";
+
 import "./style.css";
 
-// Сцена
-const scene = new THREE.Scene();
-const canvas = document.querySelector(".canvas");
+const { sizes, camera, scene, canvas, controls, renderer } = init();
 
-// Камера
-const sizes = {
-  width: window.innerWidth,
-  height: window.innerHeight,
-};
+camera.position.z = 30;
 
-const cursor = {
-  x: 0,
-  y: 0,
-};
+// const geometry = new THREE.BoxGeometry(1, 1, 1);
+// const material = new THREE.MeshBasicMaterial({
+//   color: "gray",
+//   wireframe: true,
+// });
+// const mesh = new THREE.Mesh(geometry, material);
+// scene.add(mesh);
 
-const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height);
-camera.position.z = 3;
+const gruop = new THREE.Group();
+const geometry = [
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.SphereGeometry(0.5, 32, 32),
+  new THREE.ConeGeometry(0.5, 1, 32),
+  new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
+  new THREE.TorusGeometry(0.5, 0.2, 32, 100),
+  new THREE.TorusKnotGeometry(0.5, 0.2, 32, 100),
+  new THREE.IcosahedronGeometry(0.5, 32),
+  new THREE.OctahedronGeometry(0.5, 32),
+  new THREE.DodecahedronGeometry(0.5, 32),
+];
 
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
+let index = 0;
 
-scene.add(camera);
+for (let i = -5; i <= 5; i += 5) {
+  for (let j = -5; j <= 5; j += 5) {
+    const material = new THREE.MeshBasicMaterial({
+      color: "gray",
+      wireframe: true,
+    });
+    const mesh = new THREE.Mesh(geometry[index], material);
 
-// Объект
-// const geometry = new THREE.BoxGeometry(1, 1, 1, 10, 10, 10);
-// const geometry = new THREE.CircleGeometry(3, 32, 0, Math.PI * 2);
-// const geometry = new THREE.SphereGeometry(1, 32, 32);
-// const geometry = new THREE.TorusGeometry(1, 0.4, 16, 100);
-//
-// const geometry = new THREE.IcosahedronGeometry(1, 0);
-// const geometry = new THREE.ConeGeometry(1, 2, 32, 50, true, 0, Math.PI);
-// const geometry = new THREE.CylinderGeometry(
-//   11,
-//   1,
-//   2,
-//   32,
-//   50,
-//   true,
-//   0,
-//   Math.PI * 2
-// );
+    mesh.position.set(i, j, 10);
+    mesh.index = index;
+    mesh.basePosition = new THREE.Vector3(i, j, 10);
 
-// const geometry = new THREE.RingGeometry(1, 3, 32, 50, 0, Math.PI * 2);
-
-const amount = 50;
-const points = new Float32Array(amount * 3 * 3);
-
-for (let i = 0; i < amount * 3 * 3; i++) {
-  points[i] = (Math.random() - 0.5) * 10;
+    gruop.add(mesh);
+    index++;
+  }
 }
-
-const pointsBuffer = new THREE.BufferAttribute(points, 3);
-const geometry = new THREE.BufferGeometry();
-
-geometry.setAttribute("position", pointsBuffer);
-
-const material = new THREE.MeshBasicMaterial({
-  color: "yellow",
-  wireframe: true,
-});
-
-const mesh = new THREE.Mesh(geometry, material);
-
-scene.add(mesh);
-
-const renderer = new THREE.WebGLRenderer({ canvas });
-renderer.setSize(sizes.width, sizes.height);
-renderer.render(scene, camera);
-
-const mouse = (event) => {
-  cursor.x = -(event.clientX / sizes.width - 0.5);
-  cursor.y = event.clientY / sizes.height - 0.5;
+scene.add(gruop);
+let activeIndex = -1;
+const resetActive = () => {
+  gruop.children[activeIndex].material.color.set("gray");
+  new TWEEN.Tween(gruop.children[activeIndex].position)
+    .to(
+      {
+        x: gruop.children[activeIndex].basePosition.x,
+        y: gruop.children[activeIndex].basePosition.y,
+        z: gruop.children[activeIndex].basePosition.z,
+      },
+      Math.random() * 1000 + 1000
+    )
+    .easing(TWEEN.Easing.Exponential.InOut)
+    .start();
+  activeIndex = -1;
 };
 
-window.addEventListener("mousemove", mouse);
+const clock = new THREE.Clock();
 
 const tick = () => {
-  // camera.position.x = cursor.x * 5;
-  // camera.position.y = cursor.y * 5;
-  // camera.position.x = Math.sin(cursor.x * Math.PI * 2) * 3;
-  // camera.position.z = Math.cos(cursor.x * Math.PI * 2) * 3;
-  // camera.position.y = Math.sin(cursor.x * Math.PI * 2) * 3;
-  // camera.lookAt(scene.position);
+  const delta = clock.getDelta();
+  if (activeIndex !== -1) {
+    gruop.children[activeIndex].rotation.x += delta;
+    gruop.children[activeIndex].rotation.y += delta;
+    gruop.children[activeIndex].rotation.z += delta;
+  }
+
   controls.update();
+  TWEEN.update();
   renderer.render(scene, camera);
   window.requestAnimationFrame(tick);
 };
 tick();
 
+const raycaster = new THREE.Raycaster();
+
+const handleClick = (event) => {
+  const pointer = new THREE.Vector2();
+  pointer.x = (event.clientX / sizes.width) * 2 - 1;
+  pointer.y = -(event.clientY / sizes.height) * 2 + 1;
+
+  raycaster.setFromCamera(pointer, camera);
+  const intersects = raycaster.intersectObjects(gruop.children);
+  if (activeIndex !== -1) {
+    resetActive();
+  }
+  for (let i = 0; i < intersects.length; i++) {
+    intersects[i].object.material.color.set("red");
+
+    activeIndex = intersects[i].object.index;
+
+    new TWEEN.Tween(intersects[i].object.position)
+      .to(
+        {
+          x: 0,
+          y: 0,
+          z: 20,
+        },
+        Math.random() * 1000 + 1000
+      )
+      .easing(TWEEN.Easing.Exponential.InOut)
+      .start();
+  }
+};
+
+document.addEventListener("click", handleClick);
+
+/** Базові роботодавці подій для підтримки ресайзу */
 window.addEventListener("resize", () => {
+  // Оновлюємо розміри
   sizes.width = window.innerWidth;
   sizes.height = window.innerHeight;
+
+  // Оновлюємо співвідношення сторін камери
   camera.aspect = sizes.width / sizes.height;
   camera.updateProjectionMatrix();
+
+  // Оновлюємо renderer
   renderer.setSize(sizes.width, sizes.height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.render(scene, camera);
 });
+
 window.addEventListener("dblclick", () => {
-  document.fullscreenElement
-    ? document.exitFullscreen()
-    : canvas.requestFullscreen();
+  if (!document.fullscreenElement) {
+    canvas.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
 });
